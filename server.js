@@ -1,53 +1,74 @@
 import express from 'express';
-import serverless from 'serverless-http';
 import cors from 'cors';
-import bodyParser from 'body-parser';
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
+app.use(express.json());
 
-app.use(bodyParser.json({
-  type(_request) {
-    return true;
-  }
-}));
-
-app.use((_request, response, next) => {
-  response.setHeader('Content-Type', 'application/json');
-  next();
-});
-
-const notes = [
-  {
-    "id": 0,
-    "content": "First Note"
-  },
+let notes = [
+  { id: "0", content: "First Note" }
 ];
 let nextId = 1;
 
-const router = express.Router();
 
-router.get('/notes', (_request, response) => {
-  response.send(JSON.stringify(notes));
+app.get('/notes', (_req, res) => {
+  console.log('📥 GET /notes');
+  res.json(notes);
 });
 
-router.post('/notes', (request, response) => {
-  notes.push({ ...request.body, id: nextId++ });
-  response.status(204).end();
+app.post('/notes', (req, res) => {
+  const { content } = req.body;
+  console.log('📥 POST /notes:', content);
+  
+  if (!content) {
+    return res.status(400).json({ error: 'Content is required' });
+  }
+  
+  const newNote = {
+    id: String(nextId++),
+    content
+  };
+  notes.push(newNote);
+  
+  res.status(201).json(newNote);
 });
 
-router.delete('/notes/:id', (request, response) => {
-  const noteId = Number(request.params.id);
-  const index = notes.findIndex(n => n.id === noteId);
-  if (index !== -1) notes.splice(index, 1);
-  response.status(204).end();
+app.delete('/notes/:id', (req, res) => {
+  const { id } = req.params;
+  console.log('📥 DELETE /notes/', id);
+  
+  const index = notes.findIndex(note => note.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Note not found' });
+  }
+  
+  notes.splice(index, 1);
+  res.json({ message: 'Deleted', id });
 });
 
-app.use('/.netlify/functions/server', router);
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    notesCount: notes.length,
+    timestamp: new Date().toISOString()
+  });
+});
 
-const lambda = serverless(app);
 
-export async function handler(event, context) {
-  return lambda(event, context);
-}
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`🔗 Health: http://localhost:${PORT}/health`);
+  console.log(`🔗 Notes: http://localhost:${PORT}/notes`);
+});
+
+
+process.on('unhandledRejection', (err) => {
+  console.error('❌ Unhandled rejection:', err);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('❌ Uncaught exception:', err);
+  process.exit(1);
+});
